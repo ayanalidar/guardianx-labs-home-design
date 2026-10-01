@@ -46,10 +46,10 @@ export function Editor({ onExit }: EditorProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left panel */}
         {showLeft && (
-          <aside className="w-64 lg:w-72 border-r flex-shrink-0 hidden md:block">
+          <aside className="w-72 lg:w-80 border-r flex-shrink-0 hidden md:block min-h-0 overflow-hidden">
             <FurniturePanel />
           </aside>
         )}
@@ -108,7 +108,7 @@ export function Editor({ onExit }: EditorProps) {
 
         {/* Right panel */}
         {showRight && (
-          <aside className="w-64 lg:w-72 border-l flex-shrink-0 hidden md:block">
+          <aside className="w-64 lg:w-72 border-l flex-shrink-0 hidden md:block min-h-0 overflow-hidden">
             <PropertiesPanel />
           </aside>
         )}

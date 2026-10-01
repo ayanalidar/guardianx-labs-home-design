@@ -55,7 +55,7 @@ export function PropertiesPanel() {
           <h3 className="text-sm font-semibold truncate">{f?.name || "Item"}</h3>
           <p className="text-xs text-muted-foreground">Furniture properties</p>
         </div>
-        <ScrollArea className="flex-1">
+        <div className="flex-1 overflow-y-auto min-h-0">
           <div className="p-3 space-y-4">
             {/* Position */}
             <div>
@@ -205,7 +205,7 @@ export function PropertiesPanel() {
               </Button>
             </div>
           </div>
-        </ScrollArea>
+        </div>
       </div>
     );
   }
@@ -220,7 +220,7 @@ export function PropertiesPanel() {
         <h3 className="text-sm font-semibold capitalize">{wall.type} Properties</h3>
         <p className="text-xs text-muted-foreground">Length: {length} cm</p>
       </div>
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto min-h-0">
         <div className="p-3 space-y-4">
           <div>
             <Label className="text-xs text-muted-foreground">Start point</Label>
@@ -307,7 +307,7 @@ export function PropertiesPanel() {
             <Trash2 className="h-3 w-3 mr-1" /> Delete {wall.type}
           </Button>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
@@ -354,4 +354,4 @@ function ProjectStats() {
 }
 
 // Local import to avoid cycle
-import { ScrollArea } from "@/components/ui/scroll-area";
+
