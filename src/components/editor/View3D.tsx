@@ -85,89 +85,295 @@ function Wall3D({ wall }: { wall: Wall }) {
 
 function Item3D({ item }: { item: PlacedItem }) {
   const f = getFurnitureById(item.furnitureId);
+  if (!f) return null;
   const w = item.width * CM_TO_M;
   const d = item.depth * CM_TO_M;
   const h = item.height * CM_TO_M;
   const x = item.x * CM_TO_M;
   const z = item.y * CM_TO_M;
-
-  // Special shapes for some items
-  const isPlant = f?.tags?.includes("plant");
-  const isLamp = f?.tags?.includes("lamp");
-  const isRug = f?.tags?.includes("rug");
-  const isTV = f?.id === "tv";
-  const isToilet = f?.id === "toilet";
-  const isBathtub = f?.id === "bathtub";
+  const shape = f.shape || "box";
 
   return (
     <group position={[x, 0, z]} rotation={[0, (-item.rotation * Math.PI) / 180, 0]}>
-      {isRug ? (
+      {shape === "rug" ? (
         <mesh position={[0, 0.005, 0]} receiveShadow>
           <boxGeometry args={[w, 0.02, d]} />
           <meshStandardMaterial color={item.color} roughness={1} />
         </mesh>
-      ) : isPlant ? (
+      ) : shape === "plant" ? (
         <>
-          {/* Pot */}
           <mesh position={[0, 0.15, 0]} castShadow>
             <cylinderGeometry args={[w / 3, w / 3.5, 0.3, 12]} />
             <meshStandardMaterial color="#8B6F47" />
           </mesh>
-          {/* Foliage */}
           <mesh position={[0, h / 2 + 0.15, 0]} castShadow>
-            <sphereGeometry args={[w / 2, 12, 12]} />
+            {f.id === "plant-tree" ? (
+              <cylinderGeometry args={[w / 4, w / 3, h - 0.3, 8]} />
+            ) : (
+              <sphereGeometry args={[w / 2, 12, 12]} />
+            )}
             <meshStandardMaterial color={item.color} roughness={1} />
           </mesh>
+          {f.id === "plant-tree" && (
+            <mesh position={[0, h, 0]} castShadow>
+              <coneGeometry args={[w / 2, h * 0.4, 8]} />
+              <meshStandardMaterial color="#558B2F" roughness={1} />
+            </mesh>
+          )}
         </>
-      ) : isLamp ? (
+      ) : shape === "lamp" ? (
         <>
-          {/* Base */}
           <mesh position={[0, 0.05, 0]} castShadow>
             <cylinderGeometry args={[w / 3, w / 3, 0.1, 16]} />
             <meshStandardMaterial color="#444" />
           </mesh>
-          {/* Pole */}
           <mesh position={[0, h / 2, 0]} castShadow>
             <cylinderGeometry args={[0.02, 0.02, h - 0.2, 8]} />
             <meshStandardMaterial color="#444" />
           </mesh>
-          {/* Shade */}
           <mesh position={[0, h - 0.1, 0]} castShadow>
             <coneGeometry args={[w / 2.2, 0.3, 16, 1, true]} />
             <meshStandardMaterial color={item.color} emissive={item.color} emissiveIntensity={0.3} side={THREE.DoubleSide} />
           </mesh>
           <pointLight position={[0, h - 0.2, 0]} intensity={0.5} distance={5} color={item.color} />
         </>
-      ) : isTV ? (
+      ) : shape === "tv" ? (
         <mesh position={[0, h / 2 + 0.6, 0]} castShadow>
           <boxGeometry args={[w, h, d]} />
           <meshStandardMaterial color="#0A0A0A" emissive="#1a1a2a" emissiveIntensity={0.2} />
         </mesh>
-      ) : isToilet ? (
+      ) : shape === "toilet" ? (
         <>
-          {/* Bowl */}
           <mesh position={[0, 0.4, 0]} castShadow>
             <boxGeometry args={[w, 0.5, d * 0.7]} />
             <meshStandardMaterial color={item.color} roughness={0.3} />
           </mesh>
-          {/* Tank */}
           <mesh position={[0, 0.7, -d / 2 + 0.1]} castShadow>
             <boxGeometry args={[w * 0.9, 0.6, 0.2]} />
             <meshStandardMaterial color={item.color} roughness={0.3} />
           </mesh>
         </>
-      ) : isBathtub ? (
+      ) : shape === "bathtub" ? (
         <>
           <mesh position={[0, 0.3, 0]} castShadow receiveShadow>
             <boxGeometry args={[w, 0.6, d]} />
             <meshStandardMaterial color={item.color} roughness={0.2} />
           </mesh>
-          {/* Water surface */}
           <mesh position={[0, 0.5, 0]}>
             <boxGeometry args={[w - 0.15, 0.05, d - 0.15]} />
             <meshPhysicalMaterial color="#B8E0F5" transparent opacity={0.7} roughness={0.05} />
           </mesh>
         </>
+      ) : shape === "sink" ? (
+        <>
+          <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, h, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.3} />
+          </mesh>
+          <mesh position={[0, h + 0.02, 0]}>
+            <boxGeometry args={[w * 0.7, 0.05, d * 0.7]} />
+            <meshPhysicalMaterial color="#E5E5E5" roughness={0.05} metalness={0.3} />
+          </mesh>
+        </>
+      ) : shape === "fridge" ? (
+        <>
+          <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, h, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.3} metalness={0.4} />
+          </mesh>
+          {/* Handle */}
+          <mesh position={[w / 2 - 0.04, h / 2, d / 2 + 0.01]}>
+            <boxGeometry args={[0.04, 0.4, 0.03]} />
+            <meshStandardMaterial color="#37474F" metalness={0.8} />
+          </mesh>
+          {/* Split line */}
+          <mesh position={[0, h * 0.6, d / 2 + 0.005]}>
+            <boxGeometry args={[w * 0.95, 0.01, 0.01]} />
+            <meshStandardMaterial color="#9E9E9E" />
+          </mesh>
+        </>
+      ) : shape === "stove" ? (
+        <>
+          <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, h, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.3} metalness={0.5} />
+          </mesh>
+          {/* Burners */}
+          {[
+            [-w / 4, -d / 4],
+            [w / 4, -d / 4],
+            [-w / 4, d / 4],
+            [w / 4, d / 4],
+          ].map(([bx, bz], i) => (
+            <mesh key={i} position={[bx, h + 0.005, bz]}>
+              <cylinderGeometry args={[0.06, 0.06, 0.02, 16]} />
+              <meshStandardMaterial color="#1A1A1A" />
+            </mesh>
+          ))}
+        </>
+      ) : shape === "washing" ? (
+        <>
+          <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, h, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.3} />
+          </mesh>
+          <mesh position={[0, h * 0.65, d / 2 + 0.005]}>
+            <cylinderGeometry args={[0.18, 0.18, 0.02, 24]} />
+            <meshPhysicalMaterial color="#90A4AE" transparent opacity={0.4} roughness={0.05} />
+          </mesh>
+        </>
+      ) : shape === "sofa" ? (
+        <>
+          {/* Base */}
+          <mesh position={[0, 0.2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, 0.4, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.9} />
+          </mesh>
+          {/* Backrest */}
+          <mesh position={[0, 0.55, -d / 2 + 0.1]} castShadow>
+            <boxGeometry args={[w, 0.5, 0.2]} />
+            <meshStandardMaterial color={item.color} roughness={0.9} />
+          </mesh>
+          {/* Arms */}
+          <mesh position={[-w / 2 + 0.08, 0.4, 0]} castShadow>
+            <boxGeometry args={[0.16, 0.5, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.9} />
+          </mesh>
+          <mesh position={[w / 2 - 0.08, 0.4, 0]} castShadow>
+            <boxGeometry args={[0.16, 0.5, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.9} />
+          </mesh>
+          {/* Cushions */}
+          <mesh position={[-w / 4, 0.45, 0.05]} castShadow>
+            <boxGeometry args={[w / 3, 0.1, d * 0.7]} />
+            <meshStandardMaterial color={item.color} roughness={1} />
+          </mesh>
+          <mesh position={[w / 4, 0.45, 0.05]} castShadow>
+            <boxGeometry args={[w / 3, 0.1, d * 0.7]} />
+            <meshStandardMaterial color={item.color} roughness={1} />
+          </mesh>
+        </>
+      ) : shape === "chair" ? (
+        <>
+          {/* Seat */}
+          <mesh position={[0, 0.45, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, 0.1, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.8} />
+          </mesh>
+          {/* Legs */}
+          {[
+            [-w / 2 + 0.04, -d / 2 + 0.04],
+            [w / 2 - 0.04, -d / 2 + 0.04],
+            [-w / 2 + 0.04, d / 2 - 0.04],
+            [w / 2 - 0.04, d / 2 - 0.04],
+          ].map(([lx, lz], i) => (
+            <mesh key={i} position={[lx, 0.22, lz]} castShadow>
+              <boxGeometry args={[0.04, 0.45, 0.04]} />
+              <meshStandardMaterial color="#3E2723" />
+            </mesh>
+          ))}
+          {/* Backrest */}
+          <mesh position={[0, 0.7, -d / 2 + 0.04]} castShadow>
+            <boxGeometry args={[w, 0.5, 0.05]} />
+            <meshStandardMaterial color={item.color} roughness={0.8} />
+          </mesh>
+        </>
+      ) : shape === "table" ? (
+        <>
+          {/* Top */}
+          <mesh position={[0, h - 0.04, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, 0.05, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.5} />
+          </mesh>
+          {/* Legs */}
+          {[
+            [-w / 2 + 0.05, -d / 2 + 0.05],
+            [w / 2 - 0.05, -d / 2 + 0.05],
+            [-w / 2 + 0.05, d / 2 - 0.05],
+            [w / 2 - 0.05, d / 2 - 0.05],
+          ].map(([lx, lz], i) => (
+            <mesh key={i} position={[lx, (h - 0.04) / 2, lz]} castShadow>
+              <boxGeometry args={[0.06, h - 0.04, 0.06]} />
+              <meshStandardMaterial color={item.color} roughness={0.5} />
+            </mesh>
+          ))}
+        </>
+      ) : shape === "bed" ? (
+        <>
+          {/* Frame */}
+          <mesh position={[0, 0.2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, 0.3, d]} />
+            <meshStandardMaterial color="#6D4C41" roughness={0.7} />
+          </mesh>
+          {/* Mattress */}
+          <mesh position={[0, 0.4, 0]} castShadow>
+            <boxGeometry args={[w - 0.05, 0.2, d - 0.05]} />
+            <meshStandardMaterial color={item.color} roughness={1} />
+          </mesh>
+          {/* Headboard */}
+          <mesh position={[0, 0.5, -d / 2 + 0.05]} castShadow>
+            <boxGeometry args={[w, 0.6, 0.1]} />
+            <meshStandardMaterial color="#6D4C41" roughness={0.7} />
+          </mesh>
+          {/* Pillows */}
+          <mesh position={[-w / 4, 0.52, -d / 4]} castShadow>
+            <boxGeometry args={[w / 3, 0.08, d / 4]} />
+            <meshStandardMaterial color="#FAFAFA" roughness={1} />
+          </mesh>
+          <mesh position={[w / 4, 0.52, -d / 4]} castShadow>
+            <boxGeometry args={[w / 3, 0.08, d / 4]} />
+            <meshStandardMaterial color="#FAFAFA" roughness={1} />
+          </mesh>
+        </>
+      ) : shape === "shelf" || shape === "wardrobe" ? (
+        <>
+          <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, h, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.6} />
+          </mesh>
+          {/* Shelf lines */}
+          {Array.from({ length: Math.floor(h / 0.4) }).map((_, i) => (
+            <mesh key={i} position={[0, 0.3 + i * 0.4, d / 2 + 0.005]}>
+              <boxGeometry args={[w * 0.9, 0.02, 0.01]} />
+              <meshStandardMaterial color="#3E2723" />
+            </mesh>
+          ))}
+          {/* Door handles for wardrobe */}
+          {shape === "wardrobe" && (
+            <>
+              <mesh position={[-0.05, h / 2, d / 2 + 0.005]}>
+                <boxGeometry args={[0.02, 0.15, 0.02]} />
+                <meshStandardMaterial color="#37474F" metalness={0.8} />
+              </mesh>
+              <mesh position={[0.05, h / 2, d / 2 + 0.005]}>
+                <boxGeometry args={[0.02, 0.15, 0.02]} />
+                <meshStandardMaterial color="#37474F" metalness={0.8} />
+              </mesh>
+            </>
+          )}
+        </>
+      ) : shape === "counter" ? (
+        <>
+          <mesh position={[0, h / 2 - 0.05, 0]} castShadow receiveShadow>
+            <boxGeometry args={[w, h - 0.05, d]} />
+            <meshStandardMaterial color={item.color} roughness={0.5} />
+          </mesh>
+          {/* Countertop */}
+          <mesh position={[0, h - 0.02, 0]} castShadow>
+            <boxGeometry args={[w + 0.02, 0.04, d + 0.02]} />
+            <meshStandardMaterial color="#37474F" roughness={0.3} metalness={0.3} />
+          </mesh>
+        </>
+      ) : shape === "cylinder" ? (
+        <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[w / 2, w / 2, h, 24]} />
+          <meshStandardMaterial color={item.color} roughness={0.6} />
+        </mesh>
+      ) : shape === "sphere" ? (
+        <mesh position={[0, h / 2, 0]} castShadow>
+          <sphereGeometry args={[w / 2, 24, 24]} />
+          <meshStandardMaterial color={item.color} roughness={0.6} />
+        </mesh>
       ) : (
         // Default: box
         <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
@@ -180,10 +386,11 @@ function Item3D({ item }: { item: PlacedItem }) {
 }
 
 function Floor() {
-  const project = useEditorStore((s) => s.project);
+  const room = useEditorStore((s) => s.project.rooms.find((r) => r.id === s.project.activeRoomId) || s.project.rooms[0]);
+  const walls = room?.walls || [];
   // Compute bounding box of all walls
   const box = useMemo(() => {
-    const pts = project.walls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
+    const pts = walls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
     if (pts.length === 0) return null;
     const xs = pts.map((p) => p[0]);
     const ys = pts.map((p) => p[1]);
@@ -193,7 +400,7 @@ function Floor() {
       minY: Math.min(...ys),
       maxY: Math.max(...ys),
     };
-  }, [project.walls]);
+  }, [walls]);
 
   if (!box) {
     return (
@@ -218,14 +425,16 @@ function Floor() {
 }
 
 export function View3D() {
-  const project = useEditorStore((s) => s.project);
+  const room = useEditorStore((s) => s.project.rooms.find((r) => r.id === s.project.activeRoomId) || s.project.rooms[0]);
+  const walls = room?.walls || [];
+  const items = room?.items || [];
   const selectedId = useEditorStore((s) => s.selectedId);
   const select = useEditorStore((s) => s.select);
 
   // Compute camera target as center of project
   const target = useMemo(() => {
-    const pts = project.walls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
-    const itemPts = project.items.map((i) => [i.x, i.y]);
+    const pts = walls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
+    const itemPts = items.map((i) => [i.x, i.y]);
     const all = [...pts, ...itemPts];
     if (all.length === 0) return [0, 0, 0] as [number, number, number];
     const xs = all.map((p) => p[0]);
@@ -235,7 +444,7 @@ export function View3D() {
       1.5,
       ((Math.min(...ys) + Math.max(...ys)) / 2) * CM_TO_M,
     ] as [number, number, number];
-  }, [project]);
+  }, [walls, items]);
 
   return (
     <div className="w-full h-full bg-gradient-to-b from-sky-100 to-sky-50">
@@ -262,11 +471,11 @@ export function View3D() {
 
         <Floor />
 
-        {project.walls.map((w) => (
+        {walls.map((w) => (
           <Wall3D key={w.id} wall={w} />
         ))}
 
-        {project.items.map((it) => (
+        {items.map((it) => (
           <group
             key={it.id}
             onClick={(e) => {

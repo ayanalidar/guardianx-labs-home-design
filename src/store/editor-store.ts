@@ -19,21 +19,28 @@ export interface Wall {
 
 export interface PlacedItem {
   id: string;
-  furnitureId: string; // reference to FURNITURE_CATALOG
-  x: number; // center x in cm (canvas space)
-  y: number; // center y in cm
-  rotation: number; // degrees
-  color: string; // override color
-  width: number; // cm (override)
-  depth: number; // cm (override)
-  height: number; // cm (override)
+  furnitureId: string;
+  x: number;
+  y: number;
+  rotation: number;
+  color: string;
+  width: number;
+  depth: number;
+  height: number;
+}
+
+export interface Room {
+  id: string;
+  name: string;
+  walls: Wall[];
+  items: PlacedItem[];
 }
 
 export interface Project {
   id: string;
   name: string;
-  walls: Wall[];
-  items: PlacedItem[];
+  rooms: Room[];
+  activeRoomId: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -41,9 +48,7 @@ export interface Project {
 export type ViewMode = "2d" | "3d";
 
 interface EditorState {
-  // Project
   project: Project;
-  // UI
   tool: Tool;
   viewMode: ViewMode;
   selectedId: string | null;
@@ -51,27 +56,36 @@ interface EditorState {
   zoom: number;
   panX: number;
   panY: number;
-  // Wall drawing temp state
   wallStart: { x: number; y: number } | null;
-  // History for undo
   history: Project[];
   historyIndex: number;
 
-  // Actions
   setTool: (tool: Tool) => void;
   setViewMode: (mode: ViewMode) => void;
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
   select: (id: string | null, type: "wall" | "item" | null) => void;
 
+  // Room operations
+  activeRoom: () => Room;
+  addRoom: (name?: string, walls?: Wall[], items?: PlacedItem[]) => string;
+  removeRoom: (id: string) => void;
+  setActiveRoom: (id: string) => void;
+  renameRoom: (id: string, name: string) => void;
+  duplicateRoom: (id: string) => void;
+
+  // Wall operations (on active room)
   addWall: (wall: Omit<Wall, "id">) => void;
   updateWall: (id: string, updates: Partial<Wall>) => void;
   removeWall: (id: string) => void;
+  addWallsBulk: (walls: Omit<Wall, "id">[]) => void;
 
-  addItem: (furnitureId: string, x: number, y: number) => void;
+  // Item operations (on active room)
+  addItem: (furnitureId: string, x: number, y: number, rotation?: number) => void;
   updateItem: (id: string, updates: Partial<PlacedItem>) => void;
   removeItem: (id: string) => void;
   duplicateItem: (id: string) => void;
+  addItemsBulk: (items: PlacedItem[]) => void;
 
   setWallStart: (p: { x: number; y: number } | null) => void;
 
@@ -84,18 +98,28 @@ interface EditorState {
   undo: () => void;
   redo: () => void;
   pushHistory: () => void;
+  clearAll: () => void;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 11);
 
-const emptyProject: Project = {
-  id: uid(),
-  name: "Untitled Project",
-  walls: [],
-  items: [],
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-};
+function makeRoom(name: string): Room {
+  return { id: uid(), name, walls: [], items: [] };
+}
+
+function makeProject(): Project {
+  const room = makeRoom("Living Room");
+  return {
+    id: uid(),
+    name: "Untitled Project",
+    rooms: [room],
+    activeRoomId: room.id,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+const emptyProject = makeProject();
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   project: emptyProject,
@@ -116,19 +140,103 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setPan: (x, y) => set({ panX: x, panY: y }),
   select: (id, type) => set({ selectedId: id, selectedType: type }),
 
+  activeRoom: () => {
+    const { project } = get();
+    return project.rooms.find((r) => r.id === project.activeRoomId) || project.rooms[0];
+  },
+
+  addRoom: (name, walls, items) => {
+    const room = makeRoom(name || `Room ${get().project.rooms.length + 1}`);
+    if (walls) room.walls = walls;
+    if (items) room.items = items;
+    set((s) => ({
+      project: {
+        ...s.project,
+        rooms: [...s.project.rooms, room],
+        activeRoomId: room.id,
+        updatedAt: Date.now(),
+      },
+      selectedId: null,
+      selectedType: null,
+    }));
+    get().pushHistory();
+    return room.id;
+  },
+
+  removeRoom: (id) => {
+    set((s) => {
+      if (s.project.rooms.length <= 1) return s;
+      const rooms = s.project.rooms.filter((r) => r.id !== id);
+      const activeRoomId = s.project.activeRoomId === id ? rooms[0].id : s.project.activeRoomId;
+      return {
+        project: { ...s.project, rooms, activeRoomId, updatedAt: Date.now() },
+        selectedId: null,
+        selectedType: null,
+      };
+    });
+    get().pushHistory();
+  },
+
+  setActiveRoom: (id) =>
+    set((s) => ({
+      project: { ...s.project, activeRoomId: id, updatedAt: Date.now() },
+      selectedId: null,
+      selectedType: null,
+      wallStart: null,
+    })),
+
+  renameRoom: (id, name) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) => (r.id === id ? { ...r, name } : r)),
+        updatedAt: Date.now(),
+      },
+    })),
+
+  duplicateRoom: (id) => {
+    const room = get().project.rooms.find((r) => r.id === id);
+    if (!room) return;
+    const copy: Room = {
+      id: uid(),
+      name: `${room.name} copy`,
+      walls: room.walls.map((w) => ({ ...w, id: uid() })),
+      items: room.items.map((i) => ({ ...i, id: uid() })),
+    };
+    set((s) => ({
+      project: {
+        ...s.project,
+        rooms: [...s.project.rooms, copy],
+        activeRoomId: copy.id,
+        updatedAt: Date.now(),
+      },
+    }));
+    get().pushHistory();
+  },
+
   pushHistory: () => {
     const state = get();
     const newHistory = state.history.slice(0, state.historyIndex + 1);
-    newHistory.push({ ...state.project, walls: [...state.project.walls], items: [...state.project.items] });
+    newHistory.push({
+      ...state.project,
+      rooms: state.project.rooms.map((r) => ({
+        ...r,
+        walls: r.walls.map((w) => ({ ...w })),
+        items: r.items.map((i) => ({ ...i })),
+      })),
+    });
     if (newHistory.length > 50) newHistory.shift();
     set({ history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
   addWall: (wall) => {
     const w: Wall = { ...wall, id: uid() };
-    set((s) => ({
-      project: { ...s.project, walls: [...s.project.walls, w], updatedAt: Date.now() },
-    }));
+    set((s) => {
+      const rooms = s.project.rooms.map((r) =>
+        r.id === s.project.activeRoomId ? { ...r, walls: [...r.walls, w] } : r
+      );
+      return { project: { ...s.project, rooms, updatedAt: Date.now() } };
+    });
     get().pushHistory();
   },
 
@@ -136,21 +244,45 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((s) => ({
       project: {
         ...s.project,
-        walls: s.project.walls.map((w) => (w.id === id ? { ...w, ...updates } : w)),
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId
+            ? { ...r, walls: r.walls.map((w) => (w.id === id ? { ...w, ...updates } : w)) }
+            : r
+        ),
         updatedAt: Date.now(),
       },
     })),
 
   removeWall: (id) => {
     set((s) => ({
-      project: { ...s.project, walls: s.project.walls.filter((w) => w.id !== id), updatedAt: Date.now() },
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId ? { ...r, walls: r.walls.filter((w) => w.id !== id) } : r
+        ),
+        updatedAt: Date.now(),
+      },
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
     }));
     get().pushHistory();
   },
 
-  addItem: (furnitureId, x, y) => {
+  addWallsBulk: (walls) => {
+    const newWalls: Wall[] = walls.map((w) => ({ ...w, id: uid() }));
+    set((s) => ({
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId ? { ...r, walls: [...r.walls, ...newWalls] } : r
+        ),
+        updatedAt: Date.now(),
+      },
+    }));
+    get().pushHistory();
+  },
+
+  addItem: (furnitureId, x, y, rotation = 0) => {
     const f = getFurnitureById(furnitureId);
     if (!f) return;
     const item: PlacedItem = {
@@ -158,14 +290,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       furnitureId,
       x,
       y,
-      rotation: 0,
+      rotation,
       color: f.color,
       width: f.width,
       depth: f.depth,
       height: f.height,
     };
     set((s) => ({
-      project: { ...s.project, items: [...s.project.items, item], updatedAt: Date.now() },
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId ? { ...r, items: [...r.items, item] } : r
+        ),
+        updatedAt: Date.now(),
+      },
     }));
     get().pushHistory();
   },
@@ -174,14 +312,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((s) => ({
       project: {
         ...s.project,
-        items: s.project.items.map((it) => (it.id === id ? { ...it, ...updates } : it)),
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId
+            ? { ...r, items: r.items.map((it) => (it.id === id ? { ...it, ...updates } : it)) }
+            : r
+        ),
         updatedAt: Date.now(),
       },
     })),
 
   removeItem: (id) => {
     set((s) => ({
-      project: { ...s.project, items: s.project.items.filter((it) => it.id !== id), updatedAt: Date.now() },
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId ? { ...r, items: r.items.filter((it) => it.id !== id) } : r
+        ),
+        updatedAt: Date.now(),
+      },
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
     }));
@@ -189,11 +337,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   duplicateItem: (id) => {
-    const item = get().project.items.find((i) => i.id === id);
+    const room = get().activeRoom();
+    const item = room.items.find((i) => i.id === id);
     if (!item) return;
     const copy: PlacedItem = { ...item, id: uid(), x: item.x + 30, y: item.y + 30 };
     set((s) => ({
-      project: { ...s.project, items: [...s.project.items, copy], updatedAt: Date.now() },
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId ? { ...r, items: [...r.items, copy] } : r
+        ),
+        updatedAt: Date.now(),
+      },
+    }));
+    get().pushHistory();
+  },
+
+  addItemsBulk: (items) => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId ? { ...r, items: [...r.items, ...items] } : r
+        ),
+        updatedAt: Date.now(),
+      },
     }));
     get().pushHistory();
   },
@@ -201,7 +369,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setWallStart: (p) => set({ wallStart: p }),
 
   newProject: () => {
-    const p: Project = { ...emptyProject, id: uid(), createdAt: Date.now(), updatedAt: Date.now() };
+    const p = makeProject();
     set({ project: p, selectedId: null, selectedType: null, history: [p], historyIndex: 0 });
   },
 
@@ -231,7 +399,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const data = localStorage.getItem("planner_current");
       if (data) {
         const p = JSON.parse(data) as Project;
-        get().loadProject(p);
+        // Migration: if old format with walls/items at root, wrap into a single Room
+        if (!p.rooms && (p as any).walls) {
+          const migrated: Project = {
+            id: p.id,
+            name: p.name,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+            rooms: [{ id: uid(), name: "Living Room", walls: (p as any).walls, items: (p as any).items }],
+            activeRoomId: "",
+          };
+          migrated.activeRoomId = migrated.rooms[0].id;
+          get().loadProject(migrated);
+        } else {
+          get().loadProject(p);
+        }
       }
     } catch (e) {
       console.error("Failed to load", e);
@@ -253,9 +435,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ project: history[newIdx], historyIndex: newIdx, selectedId: null, selectedType: null });
     }
   },
+
+  clearAll: () => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        rooms: s.project.rooms.map((r) =>
+          r.id === s.project.activeRoomId ? { ...r, walls: [], items: [] } : r
+        ),
+        updatedAt: Date.now(),
+      },
+      selectedId: null,
+      selectedType: null,
+    }));
+    get().pushHistory();
+  },
 }));
 
-// Helper: get all saved projects from localStorage
+// Helpers
 export function getAllSavedProjects(): Project[] {
   if (typeof window === "undefined") return [];
   try {
@@ -273,3 +470,6 @@ export function deleteSavedProject(id: string) {
     localStorage.setItem("planner_projects", JSON.stringify(filtered));
   } catch {}
 }
+
+// Compat: keep `walls` and `items` accessors on Project for components that haven't migrated.
+// Use project.rooms.find(active).walls etc. directly instead.

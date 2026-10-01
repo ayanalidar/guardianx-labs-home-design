@@ -24,6 +24,10 @@ export function Canvas2D() {
   const hoverRef = useRef<{ x: number; y: number } | null>(null);
 
   const project = useEditorStore((s) => s.project);
+  const activeRoomId = useEditorStore((s) => s.project.activeRoomId);
+  const room = useEditorStore((s) => s.project.rooms.find((r) => r.id === s.project.activeRoomId) || s.project.rooms[0]);
+  const walls = room?.walls || [];
+  const items = room?.items || [];
   const tool = useEditorStore((s) => s.tool);
   const zoom = useEditorStore((s) => s.zoom);
   const panX = useEditorStore((s) => s.panX);
@@ -44,6 +48,7 @@ export function Canvas2D() {
   const removeWall = useEditorStore((s) => s.removeWall);
   const removeItem = useEditorStore((s) => s.removeItem);
   const duplicateItem = useEditorStore((s) => s.duplicateItem);
+  const clearAll = useEditorStore((s) => s.clearAll);
 
   // Resize observer
   useEffect(() => {
@@ -81,8 +86,8 @@ export function Canvas2D() {
   const hitTest = useCallback(
     (sx: number, sy: number): { id: string; type: "wall" | "item" } | null => {
       // Items first (on top)
-      for (let i = project.items.length - 1; i >= 0; i--) {
-        const it = project.items[i];
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
         const f = getFurnitureById(it.furnitureId);
         if (!f) continue;
         const center = worldToScreen(it.x, it.y);
@@ -99,8 +104,8 @@ export function Canvas2D() {
         }
       }
       // Walls
-      for (let i = project.walls.length - 1; i >= 0; i--) {
-        const w = project.walls[i];
+      for (let i = walls.length - 1; i >= 0; i--) {
+        const w = walls[i];
         const p1 = worldToScreen(w.x1, w.y1);
         const p2 = worldToScreen(w.x2, w.y2);
         const dist = pointToSegmentDist(sx, sy, p1.x, p1.y, p2.x, p2.y);
@@ -111,14 +116,14 @@ export function Canvas2D() {
       }
       return null;
     },
-    [project, zoom, worldToScreen]
+    [items, walls, zoom, worldToScreen]
   );
 
   // Hit test wall endpoints
   const hitTestWallEnd = useCallback(
     (sx: number, sy: number): { id: string; end: "start" | "end" } | null => {
       const r = 8;
-      for (const w of project.walls) {
+      for (const w of walls) {
         const p1 = worldToScreen(w.x1, w.y1);
         const p2 = worldToScreen(w.x2, w.y2);
         if (Math.hypot(sx - p1.x, sy - p1.y) < r) return { id: w.id, end: "start" };
@@ -126,7 +131,7 @@ export function Canvas2D() {
       }
       return null;
     },
-    [project.walls, worldToScreen]
+    [walls, worldToScreen]
   );
 
   // ====== Drawing ======
@@ -165,7 +170,7 @@ export function Canvas2D() {
     }
 
     // Walls
-    for (const w of project.walls) {
+    for (const w of walls) {
       drawWall(ctx, w, zoom, worldToScreen, selectedId === w.id);
     }
 
@@ -196,13 +201,13 @@ export function Canvas2D() {
     }
 
     // Items
-    for (const it of project.items) {
+    for (const it of items) {
       drawItem(ctx, it, zoom, worldToScreen, selectedId === it.id);
     }
 
     // Scale ruler (bottom-left)
     drawScaleRuler(ctx, size.w, size.h, zoom);
-  }, [project, size, zoom, panX, panY, selectedId, tool, wallStart, hover, worldToScreen]);
+  }, [walls, items, size, zoom, panX, panY, selectedId, tool, wallStart, hover, worldToScreen]);
 
   // ====== Mouse handlers ======
   const onMouseDown = (e: React.MouseEvent) => {
@@ -245,7 +250,7 @@ export function Canvas2D() {
     // Check wall endpoints first (for resizing)
     const wallEnd = hitTestWallEnd(sx, sy);
     if (wallEnd && selectedId === wallEnd.id) {
-      const w = project.walls.find((x) => x.id === wallEnd.id)!;
+      const w = walls.find((x) => x.id === wallEnd.id)!;
       dragRef.current = {
         type: wallEnd.end === "start" ? "wall-start" : "wall-end",
         id: wallEnd.id,
@@ -260,7 +265,7 @@ export function Canvas2D() {
     if (hit) {
       select(hit.id, hit.type);
       if (hit.type === "item") {
-        const it = project.items.find((i) => i.id === hit.id)!;
+        const it = items.find((i) => i.id === hit.id)!;
         dragRef.current = {
           type: "item",
           id: hit.id,
@@ -358,7 +363,7 @@ export function Canvas2D() {
         select(null, null);
         setTool("select");
       } else if (e.key === "r" && selectedId && selectedType === "item") {
-        const it = project.items.find((i) => i.id === selectedId);
+        const it = items.find((i) => i.id === selectedId);
         if (it) updateItem(selectedId, { rotation: (it.rotation + 15) % 360 });
       } else if (e.key === "1") setTool("select");
       else if (e.key === "2") setTool("wall");
@@ -367,7 +372,7 @@ export function Canvas2D() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, selectedType, project.items, removeWall, removeItem, duplicateItem, setWallStart, select, setTool, updateItem]);
+  }, [selectedId, selectedType, items, removeWall, removeItem, duplicateItem, setWallStart, select, setTool, updateItem]);
 
   // Allow drop from furniture panel
   const onDrop = (e: React.DragEvent) => {
@@ -559,32 +564,187 @@ function drawItem(
   const center = worldToScreen(it.x, it.y);
   const w = cmToPx(it.width, zoom);
   const d = cmToPx(it.depth, zoom);
+  const shape = f.shape || "box";
 
   ctx.save();
   ctx.translate(center.x, center.y);
   ctx.rotate((it.rotation * Math.PI) / 180);
 
-  // Shadow
-  ctx.fillStyle = "rgba(0,0,0,0.08)";
-  ctx.fillRect(-w / 2 + 2, -d / 2 + 2, w, d);
+  // Round shapes (round tables, plants, cylinders)
+  const isRound = shape === "plant" || shape === "cylinder" || shape === "sphere" ||
+    (shape === "table" && (f.id === "coffee-round" || f.id === "dining-table-round" || f.id === "patio-table-round"));
 
-  // Body
-  ctx.fillStyle = it.color;
-  ctx.fillRect(-w / 2, -d / 2, w, d);
+  if (isRound) {
+    const r = Math.min(w, d) / 2;
+    // Shadow
+    ctx.fillStyle = "rgba(0,0,0,0.08)";
+    ctx.beginPath();
+    ctx.arc(2, 2, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Body
+    ctx.fillStyle = it.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Border
+    ctx.strokeStyle = selected ? "#0F766E" : "rgba(0,0,0,0.3)";
+    ctx.lineWidth = selected ? 2.5 : 1;
+    ctx.stroke();
+  } else if (shape === "rug") {
+    // Rug: dashed outline only, semi-transparent fill
+    ctx.fillStyle = it.color + "55";
+    ctx.fillRect(-w / 2, -d / 2, w, d);
+    ctx.strokeStyle = it.color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(-w / 2, -d / 2, w, d);
+    ctx.setLineDash([]);
+  } else if (shape === "lamp") {
+    // Lamp: small circle (base) with star burst
+    ctx.fillStyle = "rgba(0,0,0,0.08)";
+    ctx.fillRect(-w / 2 + 2, -d / 2 + 2, w, d);
+    ctx.fillStyle = it.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.min(w, d) / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = selected ? "#0F766E" : "rgba(0,0,0,0.3)";
+    ctx.lineWidth = selected ? 2.5 : 1;
+    ctx.stroke();
+  } else {
+    // Default box
+    // Shadow
+    ctx.fillStyle = "rgba(0,0,0,0.08)";
+    ctx.fillRect(-w / 2 + 2, -d / 2 + 2, w, d);
+    // Body
+    ctx.fillStyle = it.color;
+    ctx.fillRect(-w / 2, -d / 2, w, d);
+    // Border
+    ctx.strokeStyle = selected ? "#0F766E" : "rgba(0,0,0,0.3)";
+    ctx.lineWidth = selected ? 2.5 : 1;
+    ctx.strokeRect(-w / 2, -d / 2, w, d);
 
-  // Border
-  ctx.strokeStyle = selected ? "#0F766E" : "rgba(0,0,0,0.3)";
-  ctx.lineWidth = selected ? 2.5 : 1;
-  ctx.strokeRect(-w / 2, -d / 2, w, d);
+    // Shape-specific accents
+    if (shape === "sofa") {
+      // Back cushion line
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2 + 4, -d / 2 + 6);
+      ctx.lineTo(w / 2 - 4, -d / 2 + 6);
+      ctx.stroke();
+      // Seat divisions
+      const seats = Math.max(2, Math.round(w / 70));
+      for (let i = 1; i < seats; i++) {
+        const x = -w / 2 + (w * i) / seats;
+        ctx.beginPath();
+        ctx.moveTo(x, -d / 2 + 6);
+        ctx.lineTo(x, d / 2 - 4);
+        ctx.stroke();
+      }
+    } else if (shape === "bed") {
+      // Pillow rectangles at the "head" (top)
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      const pw = w / 2 - 8;
+      const ph = Math.min(20, d / 4);
+      ctx.fillRect(-w / 2 + 4, -d / 2 + 4, pw, ph);
+      ctx.fillRect(4, -d / 2 + 4, pw, ph);
+      // Blanket line
+      ctx.strokeStyle = "rgba(0,0,0,0.15)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2, d / 2 - ph - 4);
+      ctx.lineTo(w / 2, d / 2 - ph - 4);
+      ctx.stroke();
+    } else if (shape === "toilet") {
+      // Oval seat
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.beginPath();
+      ctx.ellipse(0, d / 4, w / 2 - 4, d / 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (shape === "bathtub") {
+      // Inner basin
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      ctx.beginPath();
+      ctx.roundRect(-w / 2 + 6, -d / 2 + 6, w - 12, d - 12, 8);
+      ctx.fill();
+      // Drain
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.beginPath();
+      ctx.arc(w / 4, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (shape === "table") {
+      // Wood grain lines
+      ctx.strokeStyle = "rgba(0,0,0,0.15)";
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < 3; i++) {
+        const y = -d / 2 + (d * (i + 1)) / 4;
+        ctx.beginPath();
+        ctx.moveTo(-w / 2 + 4, y);
+        ctx.lineTo(w / 2 - 4, y);
+        ctx.stroke();
+      }
+    } else if (shape === "wardrobe" || shape === "shelf") {
+      // Door/shelf divisions
+      ctx.strokeStyle = "rgba(0,0,0,0.25)";
+      ctx.lineWidth = 1;
+      const shelves = shape === "shelf" ? Math.max(2, Math.round(d / 30)) : 2;
+      for (let i = 1; i < shelves; i++) {
+        const x = -w / 2 + (w * i) / shelves;
+        ctx.beginPath();
+        ctx.moveTo(x, -d / 2 + 2);
+        ctx.lineTo(x, d / 2 - 2);
+        ctx.stroke();
+      }
+      if (shape === "wardrobe") {
+        // Door handles
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.beginPath();
+        ctx.arc(-2, 0, 1.5, 0, Math.PI * 2);
+        ctx.arc(2, 0, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (shape === "counter") {
+      // Countertop edge
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-w / 2 + 2, -d / 2 + 2, w - 4, d - 4);
+    } else if (shape === "fridge") {
+      // Door split line
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2, 0);
+      ctx.lineTo(w / 2, 0);
+      ctx.stroke();
+      // Handle
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(w / 2 - 4, -d / 2 + 4, 2, d / 3);
+    } else if (shape === "stove") {
+      // 4 burners
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      for (const [bx, by] of [[-w / 4, -d / 4], [w / 4, -d / 4], [-w / 4, d / 4], [w / 4, d / 4]]) {
+        ctx.beginPath();
+        ctx.arc(bx, by, Math.min(w, d) / 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (shape === "tv") {
+      // Screen highlight
+      ctx.strokeStyle = "rgba(100,200,255,0.6)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-w / 2 + 2, -d / 2 + 2, w - 4, d - 4);
+    }
+  }
 
   // Direction indicator (small triangle pointing "up" = front)
-  ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.beginPath();
-  ctx.moveTo(0, -d / 2 + Math.min(8, d / 4));
-  ctx.lineTo(-Math.min(5, w / 6), -d / 2 + Math.min(14, d / 3));
-  ctx.lineTo(Math.min(5, w / 6), -d / 2 + Math.min(14, d / 3));
-  ctx.closePath();
-  ctx.fill();
+  if (shape !== "rug" && shape !== "lamp" && !isRound) {
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.beginPath();
+    ctx.moveTo(0, -d / 2 + Math.min(8, d / 4));
+    ctx.lineTo(-Math.min(5, w / 6), -d / 2 + Math.min(14, d / 3));
+    ctx.lineTo(Math.min(5, w / 6), -d / 2 + Math.min(14, d / 3));
+    ctx.closePath();
+    ctx.fill();
+  }
 
   // Label
   if (w > 30 && d > 20) {

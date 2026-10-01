@@ -91,7 +91,8 @@ export function Toolbar({ onExit }: ToolbarProps) {
   };
 
   const handleNew = () => {
-    if (project.walls.length > 0 || project.items.length > 0) {
+    const totalElements = project.rooms.reduce((s, r) => s + r.walls.length + r.items.length, 0);
+    if (totalElements > 0) {
       if (!confirm("Start a new project? Unsaved changes will be lost.")) return;
     }
     newProject();
@@ -228,7 +229,7 @@ export function Toolbar({ onExit }: ToolbarProps) {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{p.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {p.walls.length} walls · {p.items.length} items · {new Date(p.updatedAt).toLocaleDateString()}
+                    {p.rooms.length} room{p.rooms.length !== 1 ? "s" : ""} · {p.rooms.reduce((s, r) => s + r.walls.length, 0)} walls · {p.rooms.reduce((s, r) => s + r.items.length, 0)} items · {new Date(p.updatedAt).toLocaleDateString()}
                   </div>
                 </div>
                 <Button

@@ -17,6 +17,9 @@ const COLOR_SWATCHES = [
 
 export function PropertiesPanel() {
   const project = useEditorStore((s) => s.project);
+  const room = useEditorStore((s) => s.project.rooms.find((r) => r.id === s.project.activeRoomId) || s.project.rooms[0]);
+  const walls = room?.walls || [];
+  const items = room?.items || [];
   const selectedId = useEditorStore((s) => s.selectedId);
   const selectedType = useEditorStore((s) => s.selectedType);
   const updateItem = useEditorStore((s) => s.updateItem);
@@ -43,7 +46,7 @@ export function PropertiesPanel() {
   }
 
   if (selectedType === "item") {
-    const item = project.items.find((i) => i.id === selectedId);
+    const item = items.find((i) => i.id === selectedId);
     if (!item) return null;
     const f = getFurnitureById(item.furnitureId);
     return (
@@ -208,7 +211,7 @@ export function PropertiesPanel() {
   }
 
   // Wall
-  const wall = project.walls.find((w) => w.id === selectedId);
+  const wall = walls.find((w) => w.id === selectedId);
   if (!wall) return null;
   const length = Math.round(Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1));
   return (
@@ -311,10 +314,12 @@ export function PropertiesPanel() {
 
 function ProjectStats() {
   const project = useEditorStore((s) => s.project);
-  const walls = project.walls.filter((w) => w.type === "wall");
+  const room = useEditorStore((s) => s.project.rooms.find((r) => r.id === s.project.activeRoomId) || s.project.rooms[0]);
+  const walls = (room?.walls || []).filter((w) => w.type === "wall");
+  const allWalls = room?.walls || [];
   const totalWallLength = walls.reduce((sum, w) => sum + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0);
-  // Rough area estimate using bounding box of walls (not exact)
-  const allPts = project.walls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
+  const allPts = allWalls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
+  const allItems = room?.items || [];
   let area = 0;
   if (allPts.length >= 2) {
     const xs = allPts.map((p) => p[0]);
@@ -333,7 +338,7 @@ function ProjectStats() {
         </div>
         <div className="bg-muted rounded-md p-2">
           <div className="text-muted-foreground">Items</div>
-          <div className="font-semibold">{project.items.length}</div>
+          <div className="font-semibold">{allItems.length}</div>
         </div>
         <div className="bg-muted rounded-md p-2">
           <div className="text-muted-foreground">Wall length</div>

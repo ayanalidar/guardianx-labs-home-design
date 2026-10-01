@@ -329,7 +329,7 @@ export function LandingPage({ onStart, onOpenProject }: LandingPageProps) {
                   <CardContent className="p-4">
                     <div className="font-semibold truncate">{p.name}</div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      {p.walls.length} walls · {p.items.length} items · {new Date(p.updatedAt).toLocaleDateString()}
+                      {p.rooms.length} room{p.rooms.length !== 1 ? "s" : ""} · {p.rooms.reduce((s, r) => s + r.walls.length, 0)} walls · {p.rooms.reduce((s, r) => s + r.items.length, 0)} items · {new Date(p.updatedAt).toLocaleDateString()}
                     </div>
                   </CardContent>
                 </Card>
@@ -535,7 +535,10 @@ function HeroFloorPlan() {
 
 // Tiny SVG preview of a saved project
 function MiniPreview({ project }: { project: Project }) {
-  if (project.walls.length === 0 && project.items.length === 0) {
+  // Aggregate walls and items across all rooms
+  const allWalls = project.rooms.flatMap((r) => r.walls);
+  const allItems = project.rooms.flatMap((r) => r.items);
+  if (allWalls.length === 0 && allItems.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center text-stone-400 text-sm">
         Empty project
@@ -543,8 +546,8 @@ function MiniPreview({ project }: { project: Project }) {
     );
   }
   // Compute bounds
-  const pts = project.walls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
-  const itemPts = project.items.map((i) => [i.x, i.y]);
+  const pts = allWalls.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]]);
+  const itemPts = allItems.map((i) => [i.x, i.y]);
   const all = [...pts, ...itemPts];
   const xs = all.map((p) => p[0]);
   const ys = all.map((p) => p[1]);
@@ -563,7 +566,7 @@ function MiniPreview({ project }: { project: Project }) {
     <svg viewBox="0 0 200 120" className="w-full h-full">
       <rect width="200" height="120" fill="#FAFAF7" />
       {/* Walls */}
-      {project.walls.map((wall, i) => (
+      {allWalls.map((wall, i) => (
         <line
           key={i}
           x1={wall.x1 * scale + ox}
@@ -575,7 +578,7 @@ function MiniPreview({ project }: { project: Project }) {
         />
       ))}
       {/* Items */}
-      {project.items.map((it, i) => (
+      {allItems.map((it, i) => (
         <rect
           key={i}
           x={(it.x - it.width / 2) * scale + ox}

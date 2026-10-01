@@ -5,6 +5,9 @@ import { Canvas2D } from "./Canvas2D";
 import { FurniturePanel } from "./FurniturePanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { Toolbar } from "./Toolbar";
+import { RoomTabs } from "./RoomTabs";
+import { AddRoomButton } from "./AddRoomButton";
+import { EmptyState } from "./EmptyState";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -34,6 +37,15 @@ export function Editor({ onExit }: EditorProps) {
   return (
     <div className="fixed inset-0 bg-background flex flex-col z-50">
       <Toolbar onExit={onExit} />
+
+      {/* Room tabs row */}
+      <div className="flex items-center gap-2 border-b bg-card px-3 py-1.5">
+        <RoomTabs />
+        <div className="ml-auto flex-shrink-0">
+          <AddRoomButton />
+        </div>
+      </div>
+
       <div className="flex-1 flex overflow-hidden">
         {/* Left panel */}
         {showLeft && (
@@ -45,6 +57,7 @@ export function Editor({ onExit }: EditorProps) {
         {/* Canvas area */}
         <main className="flex-1 relative overflow-hidden">
           {viewMode === "2d" ? <Canvas2D /> : <View3D />}
+          {viewMode === "2d" && <EmptyState />}
 
           {/* Toggle buttons */}
           <div className="absolute top-3 left-3 flex gap-1">
