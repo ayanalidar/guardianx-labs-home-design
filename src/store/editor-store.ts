@@ -304,8 +304,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ),
         updatedAt: Date.now(),
       },
+      // Auto-select the newly added item so user can edit it immediately
+      selectedId: item.id,
+      selectedType: "item",
     }));
     get().pushHistory();
+    return item.id;
   },
 
   updateItem: (id, updates) =>

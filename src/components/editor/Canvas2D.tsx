@@ -383,6 +383,8 @@ export function Canvas2D() {
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const world = screenToWorld(sx, sy);
+    // addItem auto-selects the new item. Also switch to select tool.
+    setTool("select");
     addItem(furnitureId, world.x, world.y);
   };
 
