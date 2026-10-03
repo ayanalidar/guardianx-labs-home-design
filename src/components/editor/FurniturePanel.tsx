@@ -87,7 +87,7 @@ export function FurniturePanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-card min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 bg-card min-h-0">
       {/* Header */}
       <div className="flex-shrink-0 p-3 border-b">
         <div className="flex items-center justify-between mb-2">

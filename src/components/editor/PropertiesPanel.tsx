@@ -30,7 +30,7 @@ export function PropertiesPanel() {
 
   if (!selectedId || !selectedType) {
     return (
-      <div className="flex flex-col h-full bg-card">
+      <div className="flex flex-col flex-1 min-h-0 bg-card">
         <div className="p-3 border-b">
           <h3 className="text-sm font-semibold">Properties</h3>
         </div>
@@ -50,7 +50,7 @@ export function PropertiesPanel() {
     if (!item) return null;
     const f = getFurnitureById(item.furnitureId);
     return (
-      <div className="flex flex-col h-full bg-card">
+      <div className="flex flex-col flex-1 min-h-0 bg-card">
         <div className="p-3 border-b">
           <h3 className="text-sm font-semibold truncate">{f?.name || "Item"}</h3>
           <p className="text-xs text-muted-foreground">Furniture properties</p>
@@ -215,7 +215,7 @@ export function PropertiesPanel() {
   if (!wall) return null;
   const length = Math.round(Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1));
   return (
-    <div className="flex flex-col h-full bg-card">
+    <div className="flex flex-col flex-1 min-h-0 bg-card">
       <div className="p-3 border-b">
         <h3 className="text-sm font-semibold capitalize">{wall.type} Properties</h3>
         <p className="text-xs text-muted-foreground">Length: {length} cm</p>
