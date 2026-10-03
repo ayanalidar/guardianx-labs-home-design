@@ -8,6 +8,7 @@ import { Toolbar } from "./Toolbar";
 import { RoomTabs } from "./RoomTabs";
 import { AddRoomButton } from "./AddRoomButton";
 import { EmptyState } from "./EmptyState";
+import { AutoCADOverlay } from "./AutoCADOverlay";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ export function Editor({ onExit }: EditorProps) {
         <main className="flex-1 relative overflow-hidden">
           {viewMode === "2d" ? <Canvas2D /> : <View3D />}
           {viewMode === "2d" && <EmptyState />}
+          {viewMode === "2d" && <AutoCADOverlay />}
 
           {/* Toggle buttons */}
           <div className="absolute top-3 left-3 flex gap-1">

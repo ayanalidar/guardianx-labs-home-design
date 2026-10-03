@@ -47,6 +47,24 @@ export interface Project {
 
 export type ViewMode = "2d" | "3d";
 
+// AutoCAD-style snap modes
+export type SnapMode = "endpoint" | "midpoint" | "intersection" | "center" | "perpendicular" | "nearest" | "quadrant";
+
+export interface SnapSettings {
+  endpoint: boolean;
+  midpoint: boolean;
+  intersection: boolean;
+  center: boolean;
+  perpendicular: boolean;
+  nearest: boolean;
+  quadrant: boolean;
+}
+
+export interface PolarTracking {
+  enabled: boolean;
+  angles: number[]; // [0, 15, 30, 45, 60, 75, 90, ...]
+}
+
 interface EditorState {
   project: Project;
   tool: Tool;
@@ -60,11 +78,29 @@ interface EditorState {
   history: Project[];
   historyIndex: number;
 
+  // AutoCAD features
+  osnap: SnapSettings;
+  polarTracking: PolarTracking;
+  commandLine: string;
+  commandActive: boolean;
+  dynamicInput: boolean;
+  cursorWorld: { x: number; y: number } | null;
+  snapIndicator: { x: number; y: number; type: string } | null;
+
   setTool: (tool: Tool) => void;
   setViewMode: (mode: ViewMode) => void;
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
   select: (id: string | null, type: "wall" | "item" | null) => void;
+
+  // AutoCAD setters
+  setOsnap: (settings: Partial<SnapSettings>) => void;
+  setPolarTracking: (settings: Partial<PolarTracking>) => void;
+  setCommandLine: (cmd: string) => void;
+  setCommandActive: (active: boolean) => void;
+  setDynamicInput: (on: boolean) => void;
+  setCursorWorld: (pos: { x: number; y: number } | null) => void;
+  setSnapIndicator: (ind: { x: number; y: number; type: string } | null) => void;
 
   // Room operations
   activeRoom: () => Room;
@@ -134,11 +170,40 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   history: [emptyProject],
   historyIndex: 0,
 
+  // AutoCAD features initial state
+  osnap: {
+    endpoint: true,
+    midpoint: true,
+    intersection: true,
+    center: false,
+    perpendicular: false,
+    nearest: false,
+    quadrant: false,
+  } as SnapSettings,
+  polarTracking: {
+    enabled: true,
+    angles: [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180],
+  } as PolarTracking,
+  commandLine: "",
+  commandActive: false,
+  dynamicInput: true,
+  cursorWorld: null,
+  snapIndicator: null,
+
   setTool: (tool) => set({ tool, wallStart: null }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setZoom: (zoom) => set({ zoom: Math.max(0.2, Math.min(3, zoom)) }),
   setPan: (x, y) => set({ panX: x, panY: y }),
   select: (id, type) => set({ selectedId: id, selectedType: type }),
+
+  // AutoCAD setters
+  setOsnap: (settings) => set((s) => ({ osnap: { ...s.osnap, ...settings } })),
+  setPolarTracking: (settings) => set((s) => ({ polarTracking: { ...s.polarTracking, ...settings } })),
+  setCommandLine: (cmd) => set({ commandLine: cmd }),
+  setCommandActive: (active) => set({ commandActive: active }),
+  setDynamicInput: (on) => set({ dynamicInput: on }),
+  setCursorWorld: (pos) => set({ cursorWorld: pos }),
+  setSnapIndicator: (ind) => set({ snapIndicator: ind }),
 
   activeRoom: () => {
     const { project } = get();

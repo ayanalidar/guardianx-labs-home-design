@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useEditorStore, type Wall, type PlacedItem } from "@/store/editor-store";
 import { BASE_SCALE, getFurnitureById } from "@/lib/furniture";
+import { formatMeasurement } from "@/lib/units";
 
 // Convert cm to screen pixels
 const cmToPx = (cm: number, zoom: number) => cm * BASE_SCALE * zoom;
@@ -49,6 +50,110 @@ export function Canvas2D() {
   const removeItem = useEditorStore((s) => s.removeItem);
   const duplicateItem = useEditorStore((s) => s.duplicateItem);
   const clearAll = useEditorStore((s) => s.clearAll);
+
+  // AutoCAD features
+  const osnap = useEditorStore((s) => s.osnap);
+  const polarTracking = useEditorStore((s) => s.polarTracking);
+  const dynamicInput = useEditorStore((s) => s.dynamicInput);
+  const setCursorWorld = useEditorStore((s) => s.setCursorWorld);
+  const setSnapIndicator = useEditorStore((s) => s.setSnapIndicator);
+
+  // OSNAP: find nearest snap point
+  const findSnapPoint = useCallback(
+    (worldX: number, worldY: number): { x: number; y: number; type: string } | null => {
+      const snapRadius = 20 / (BASE_SCALE * zoom); // 20px snap radius in world coords
+      let bestDist = snapRadius;
+      let bestSnap: { x: number; y: number; type: string } | null = null;
+
+      for (const w of walls) {
+        // Endpoint snap
+        if (osnap.endpoint) {
+          for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+            const d = Math.hypot(worldX - px, worldY - py);
+            if (d < bestDist) {
+              bestDist = d;
+              bestSnap = { x: px, y: py, type: "endpoint" };
+            }
+          }
+        }
+        // Midpoint snap
+        if (osnap.midpoint) {
+          const mx = (w.x1 + w.x2) / 2;
+          const my = (w.y1 + w.y2) / 2;
+          const d = Math.hypot(worldX - mx, worldY - my);
+          if (d < bestDist) {
+            bestDist = d;
+            bestSnap = { x: mx, y: my, type: "midpoint" };
+          }
+        }
+        // Nearest snap (on the line)
+        if (osnap.nearest) {
+          const dx = w.x2 - w.x1;
+          const dy = w.y2 - w.y1;
+          const len2 = dx * dx + dy * dy;
+          if (len2 > 0) {
+            let t = ((worldX - w.x1) * dx + (worldY - w.y1) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            const nx = w.x1 + t * dx;
+            const ny = w.y1 + t * dy;
+            const d = Math.hypot(worldX - nx, worldY - ny);
+            if (d < bestDist) {
+              bestDist = d;
+              bestSnap = { x: nx, y: ny, type: "nearest" };
+            }
+          }
+        }
+      }
+
+      // Item centers
+      if (osnap.center) {
+        for (const it of items) {
+          const d = Math.hypot(worldX - it.x, worldY - it.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestSnap = { x: it.x, y: it.y, type: "center" };
+          }
+        }
+      }
+
+      return bestSnap;
+    },
+    [walls, items, osnap, zoom]
+  );
+
+  // Polar tracking: constrain angle to nearest tracked angle
+  const applyPolarTracking = useCallback(
+    (startX: number, startY: number, endX: number, endY: number): { x: number; y: number } => {
+      if (!polarTracking.enabled) return { x: endX, y: endY };
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1) return { x: endX, y: endY };
+      const angle = Math.atan2(-dy, dx) * 180 / Math.PI; // 0 = right, 90 = up
+      const normalized = ((angle % 360) + 360) % 360;
+
+      // Find nearest tracked angle
+      let bestAngle = 0;
+      let bestDiff = 5; // 5 degree tolerance
+      for (const a of polarTracking.angles) {
+        const diff = Math.min(Math.abs(normalized - a), 360 - Math.abs(normalized - a));
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestAngle = a;
+        }
+      }
+
+      if (bestDiff < 5) {
+        const rad = (bestAngle * Math.PI) / 180;
+        return {
+          x: startX + dist * Math.cos(rad),
+          y: startY - dist * Math.sin(rad),
+        };
+      }
+      return { x: endX, y: endY };
+    },
+    [polarTracking]
+  );
 
   // Resize observer
   useEffect(() => {
@@ -174,30 +279,88 @@ export function Canvas2D() {
       drawWall(ctx, w, zoom, worldToScreen, selectedId === w.id);
     }
 
-    // Wall preview (while drawing)
+    // Wall preview (while drawing) — with polar tracking + OSNAP
     if ((tool === "wall" || tool === "door" || tool === "window") && wallStart && hoverRef.current) {
       const start = worldToScreen(wallStart.x, wallStart.y);
       const hover = hoverRef.current;
+      // Get world coords of hover
+      const hoverWorld = screenToWorld(hover.x, hover.y);
+      // Apply OSNAP to hover
+      const snapHover = findSnapPoint(hoverWorld.x, hoverWorld.y);
+      let endWorld = snapHover ? { x: snapHover.x, y: snapHover.y } : hoverWorld;
+      // Apply polar tracking
+      endWorld = applyPolarTracking(wallStart.x, wallStart.y, endWorld.x, endWorld.y);
+      const endScreen = worldToScreen(endWorld.x, endWorld.y);
+
+      // Polar tracking guide lines (dotted infinite lines at tracked angles)
+      if (polarTracking.enabled) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(168, 85, 247, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 4]);
+        for (const angle of polarTracking.angles) {
+          const rad = (angle * Math.PI) / 180;
+          const len = 2000;
+          ctx.beginPath();
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(start.x + len * Math.cos(rad), start.y - len * Math.sin(rad));
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+
+      // Wall preview line (CAD-style: rubber band line)
       ctx.strokeStyle = tool === "door" ? "#8B5CF6" : tool === "window" ? "#06B6D4" : "#0F766E";
-      ctx.lineWidth = Math.max(cmToPx(15, zoom), 4);
+      ctx.lineWidth = 2;
       ctx.setLineDash([8, 4]);
       ctx.beginPath();
       ctx.moveTo(start.x, start.y);
-      ctx.lineTo(hover.x, hover.y);
+      ctx.lineTo(endScreen.x, endScreen.y);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Length label
-      const len = Math.hypot(hoverRef.current.x - wallStart.x, hoverRef.current.y - wallStart.y);
+      // Length + angle label (AutoCAD-style dynamic input on canvas)
+      const len = Math.hypot(endWorld.x - wallStart.x, endWorld.y - wallStart.y);
+      const angle = Math.atan2(-(endWorld.y - wallStart.y), endWorld.x - wallStart.x) * 180 / Math.PI;
       ctx.fillStyle = "#0F766E";
-      ctx.font = "12px sans-serif";
-      ctx.fillText(`${Math.round(len)} cm`, hover.x + 10, hover.y - 10);
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "center";
+      const midX = (start.x + endScreen.x) / 2;
+      const midY = (start.y + endScreen.y) / 2;
+      ctx.fillText(`${formatMeasurement(len, unitSystem)} < ${angle.toFixed(1)}°`, midX, midY - 10);
+      ctx.textAlign = "left";
 
-      // Snap indicator
+      // Start point marker
       ctx.fillStyle = "#0F766E";
       ctx.beginPath();
       ctx.arc(start.x, start.y, 4, 0, Math.PI * 2);
       ctx.fill();
+
+      // End point marker (rubber band endpoint)
+      ctx.strokeStyle = "#0F766E";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(endScreen.x, endScreen.y, 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Polar tracking cursor crosshair (when not drawing)
+    if (polarTracking.enabled && !wallStart && hoverRef.current && (tool === "wall" || tool === "door" || tool === "window")) {
+      const h = hoverRef.current;
+      ctx.save();
+      ctx.strokeStyle = "rgba(168, 85, 247, 0.15)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 6]);
+      // Horizontal and vertical crosshair through cursor
+      ctx.beginPath();
+      ctx.moveTo(0, h.y);
+      ctx.lineTo(size.w, h.y);
+      ctx.moveTo(h.x, 0);
+      ctx.lineTo(h.x, size.h);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
     }
 
     // Items
@@ -223,11 +386,20 @@ export function Canvas2D() {
     }
 
     if (tool === "wall" || tool === "door" || tool === "window") {
-      // Snap to grid (10cm)
-      const snapped = snap(world.x, world.y);
+      // OSNAP first, then grid snap
+      const osnapResult = findSnapPoint(world.x, world.y);
+      let snapped: { x: number; y: number };
+      if (osnapResult) {
+        snapped = { x: osnapResult.x, y: osnapResult.y };
+      } else {
+        snapped = snap(world.x, world.y);
+      }
       if (!wallStart) {
         setWallStart(snapped);
       } else {
+        // Apply polar tracking
+        const polar = applyPolarTracking(wallStart.x, wallStart.y, snapped.x, snapped.y);
+        snapped = polar;
         // Finish wall
         const thickness = tool === "wall" ? 15 : tool === "door" ? 10 : 10;
         const height = tool === "wall" ? 270 : 210;
@@ -240,8 +412,8 @@ export function Canvas2D() {
           height,
           type: tool === "wall" ? "wall" : tool,
         });
-        // Chain: continue from end
-        setWallStart(snapped);
+        // Reset (no chaining — toggle behavior)
+        setWallStart(null);
       }
       return;
     }
@@ -286,6 +458,18 @@ export function Canvas2D() {
     const world = screenToWorld(sx, sy);
     hoverRef.current = { x: sx, y: sy };
     setHover({ x: sx, y: sy });
+
+    // Update cursor world position for dynamic input
+    setCursorWorld({ x: world.x, y: world.y });
+
+    // Update snap indicator
+    const snapPt = findSnapPoint(world.x, world.y);
+    if (snapPt) {
+      const screenPt = worldToScreen(snapPt.x, snapPt.y);
+      setSnapIndicator({ x: screenPt.x, y: screenPt.y, type: snapPt.type });
+    } else {
+      setSnapIndicator(null);
+    }
 
     const drag = dragRef.current;
     if (!drag) return;
@@ -369,6 +553,13 @@ export function Canvas2D() {
       else if (e.key === "2") setTool("wall");
       else if (e.key === "3") setTool("door");
       else if (e.key === "4") setTool("window");
+      // AutoCAD command shortcuts
+      else if (e.key === "l" || e.key === "L") setTool("wall");
+      else if (e.key === "c" || e.key === "C") setTool("circle");
+      else if (e.key === "a" || e.key === "A") setTool("curve");
+      else if (e.key === "d" || e.key === "D") setTool("dimension");
+      else if (e.key === "t" || e.key === "T") setTool("text");
+      else if (e.key === "Escape") { setTool("select"); setWallStart(null); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
